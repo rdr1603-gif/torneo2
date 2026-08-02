@@ -1,0 +1,42 @@
+{
+  "projectSettings": {
+    "buildCommand": "npm run build",
+    "devCommand": "npm run dev",
+    "installCommand": "npm ci",
+    "framework": "nextjs",
+    "nodeVersion": "20.x"
+  },
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "env": {
+    "DATABASE_URL": {
+      "description": "PostgreSQL Database URL from Supabase"
+    },
+    "REDIS_URL": {
+      "description": "Redis REST URL from Upstash"
+    },
+    "NEXTAUTH_URL": {
+      "description": "NextAuth URL",
+      "default": "https://$VERCEL_URL"
+    },
+    "NEXTAUTH_SECRET": {
+      "description": "NextAuth Secret Key - Generate with: openssl rand -base64 32",
+      "encrypted": true
+    },
+    "SENTRY_DSN": {
+      "description": "Sentry Error Tracking DSN (optional)"
+    },
+    "NEXT_PUBLIC_API_URL": {
+      "description": "Public API URL for frontend",
+      "default": "https://$VERCEL_URL"
+    }
+  },
+  "functions": {
+    "api/**": {
+      "maxDuration": 30
+    }
+  },
+  "redirects": [],
+  "rewrites": [],
+  "headers": []
+}

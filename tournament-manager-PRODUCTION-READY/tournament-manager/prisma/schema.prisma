@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["jsonProtocol"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users & Auth
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  name             String?
+  password         String?
+  image            String?
+  role             UserRole @default(TEAM_MANAGER)
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+enum UserRole {
+  ADMIN
+  ORGANIZER
+  TEAM_MANAGER
+  SPECTATOR
+}
+
+// Organizations
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  logo             String?
+  users            User[]
+  tournaments      Tournament[]
+  players          Player[]
+  teams            Team[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Players & Teams
+model Player {
+  id               String   @id @default(cuid())
+  name             String
+  email            String?
+  level            Int      @default(2) // 1-5
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+}
+
+model Team {
+  id               String   @id @default(cuid())
+  name             String
+  player1Id        String
+  player2Id        String
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  participants     TeamParticipant[]
+  homeMatches      Match[] @relation("homeTeam")
+  awayMatches      Match[] @relation("awayTeam")
+  standings        Standing[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([name, organizationId])
+  @@index([organizationId])
+}
+
+// Tournaments
+model Tournament {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  status           TournamentStatus @default(DRAFT)
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  categoryId       String
+  category         Category @relation(fields: [categoryId], references: [id])
+  format           String   // ROUND_ROBIN, SINGLE_ELIM, etc.
+  startDate        DateTime
+  endDate          DateTime
+  maxTeams         Int
+  minTeamsPerZone  Int      @default(2)
+  hasZones         Boolean  @default(false)
+  matchDurationMin Int      @default(45)
+  breakBetweenMin  Int      @default(15)
+  courtCount       Int      @default(1)
+  metadata         Json?
+  
+  // Relations
+  teams            TeamParticipant[]
+  zones            Zone[]
+  matches          Match[]
+  standings        Standing[]
+  rounds           Round[]
+  courts           Court[]
+  waitingQueue     TeamWaitingQueue[]
+  smartLogs        SmartSchedulerLog[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([startDate])
+}
+
+enum TournamentStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Category {
+  id               String   @id @default(cuid())
+  name             String   // Amateur, Intermedio, Pro
+  level            Int      // 1-5
+  tournaments      Tournament[]
+  createdAt        DateTime @default(now())
+
+  @@unique([name, level])
+}
+
+// Zones
+model Zone {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  name             String
+  qualifyCount     Int      @default(2)
+  standings        Standing[]
+  matches          Match[]
+  createdAt        DateTime @default(now())
+
+  @@unique([tournamentId, name])
+  @@index([tournamentId])
+}
+
+// Teams in Tournaments
+model TeamParticipant {
+  id               String   @id @default(cuid())
+  teamId           String
+  team             Team @relation(fields: [teamId], references: [id])
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  zoneId           String?
+  zone             Zone? @relation(fields: [zoneId], references: [id])
+  seedPosition     Int?
+  status           String   @default("ACTIVE")
+  createdAt        DateTime @default(now())
+
+  @@unique([teamId, tournamentId])
+  @@index([tournamentId])
+  @@index([zoneId])
+}
+
+// Courts
+model Court {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  name             String
+  status           String   @default("AVAILABLE")
+  matches          Match[]
+  createdAt        DateTime @default(now())
+
+  @@index([tournamentId, status])
+}
+
+// Rounds
+model Round {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  type             RoundType
+  sequenceNumber   Int
+  matches          Match[]
+  createdAt        DateTime @default(now())
+
+  @@unique([tournamentId, sequenceNumber])
+  @@index([tournamentId])
+}
+
+enum RoundType {
+  GROUP_STAGE
+  ROUND_ROBIN
+  ROUND_OF_16
+  QUARTERFINALS
+  SEMIFINALS
+  FINALS
+}
+
+// Matches
+model Match {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  zoneId           String?
+  zone             Zone? @relation(fields: [zoneId], references: [id])
+  roundId          String?
+  round            Round? @relation(fields: [roundId], references: [id])
+  homeTeamId       String
+  homeTeam         Team @relation("homeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId       String
+  awayTeam         Team @relation("awayTeam", fields: [awayTeamId], references: [id])
+  courtId          String?
+  court            Court? @relation(fields: [courtId], references: [id])
+  status           MatchStatus @default(SCHEDULED)
+  scheduledAt      DateTime?
+  result           Result?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tournamentId, status])
+  @@index([courtId, status, scheduledAt])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+}
+
+enum MatchStatus {
+  SCHEDULED
+  WAITING_TEAMS
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Results
+model Result {
+  id               String   @id @default(cuid())
+  matchId          String   @unique
+  match            Match @relation(fields: [matchId], references: [id])
+  homeScore        Int
+  awayScore        Int
+  set1Home         Int?
+  set1Away         Int?
+  set2Home         Int?
+  set2Away         Int?
+  set3Home         Int?
+  set3Away         Int?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([matchId])
+}
+
+// Standings
+model Standing {
+  id               String   @id @default(cuid())
+  teamId           String
+  team             Team @relation(fields: [teamId], references: [id])
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  zoneId           String?
+  zone             Zone? @relation(fields: [zoneId], references: [id])
+  position         Int?
+  matchesPlayed    Int      @default(0)
+  wins             Int      @default(0)
+  losses           Int      @default(0)
+  draws            Int      @default(0)
+  points           Int      @default(0)
+  pointsFor        Int      @default(0)
+  pointsAgainst    Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([teamId, tournamentId, zoneId])
+  @@index([tournamentId, position])
+  @@index([zoneId, position])
+}
+
+// Waiting Queue
+model TeamWaitingQueue {
+  id               String   @id @default(cuid())
+  teamId           String
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  enteredAt        DateTime @default(now())
+  notifiedAt       DateTime?
+  isActive         Boolean  @default(true)
+
+  @@unique([teamId, tournamentId])
+  @@index([tournamentId, isActive, enteredAt])
+}
+
+// Head to Head History
+model HeadToHead {
+  id               String   @id @default(cuid())
+  team1Id          String
+  team2Id          String
+  tournamentId     String
+  matchesPlayed    Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([team1Id, team2Id, tournamentId])
+  @@index([tournamentId])
+}
+
+// Smart Scheduler Logs
+model SmartSchedulerLog {
+  id               String   @id @default(cuid())
+  tournamentId     String
+  tournament       Tournament @relation(fields: [tournamentId], references: [id])
+  variantId        String   // A/B testing variant
+  matchId          String
+  score            Float
+  accepted         Boolean
+  createdAt        DateTime @default(now())
+
+  @@index([tournamentId, variantId])
+  @@index([createdAt])
+}
+
+// Feedback
+model Feedback {
+  id               String   @id @default(cuid())
+  matchId          String
+  tournamentId     String
+  rating           String   // 'good', 'bad'
+  comment          String?
+  createdAt        DateTime @default(now())
+
+  @@index([tournamentId])
+  @@index([createdAt])
+}
