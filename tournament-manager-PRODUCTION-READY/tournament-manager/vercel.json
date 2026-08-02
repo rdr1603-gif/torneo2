@@ -31,11 +31,6 @@
       "default": "https://$VERCEL_URL"
     }
   },
-  "functions": {
-    "api/**": {
-      "maxDuration": 30
-    }
-  },
   "redirects": [],
   "rewrites": [],
   "headers": []
